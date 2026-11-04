@@ -33,6 +33,13 @@ export interface MappingConfig {
   salesProductName: string;
   /** Prefix for Jurnal transaction numbers, e.g. "POS". */
   transactionNoPrefix: string;
+  /**
+   * Jurnal product used for the PB1 line. Set its sales account in Jurnal to
+   * the PB1 Tax Payable account, so this line posts to that liability.
+   */
+  pb1ProductName: string;
+  /** PB1 rate included in POS totals, in percent (10 in Bali). 0 turns the split off. */
+  pb1RatePercent: number;
 }
 
 export interface SalesInvoicePayload {

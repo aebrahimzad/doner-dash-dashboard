@@ -8,11 +8,14 @@ import assert from 'node:assert/strict';
 import { createHmac, createHash } from 'node:crypto';
 
 import { bodyDigest, hmacAuthorization, JurnalClient } from './jurnal-client.ts';
-import { paymentMethodKey, toReceivePayment, toSalesInvoice, tradingDate, validateTransaction } from './mappers.ts';
+import { paymentMethodKey, splitPb1, toReceivePayment, toSalesInvoice, tradingDate, validateTransaction } from './mappers.ts';
 import { syncBatch, type SyncLogRow, type SyncStore } from './sync.ts';
 import type { MappingConfig, PaymentAccount, PosTransaction } from './types.ts';
 
-const cfg: MappingConfig = { customerName: 'POS Customer', salesProductName: 'POS Sales', transactionNoPrefix: 'POS' };
+const cfg: MappingConfig = {
+  customerName: 'POS Customer', salesProductName: 'POS Sales', transactionNoPrefix: 'POS',
+  pb1ProductName: 'PB1 10%', pb1RatePercent: 10,
+};
 const txn: PosTransaction = { order_reference: '#2-1958', sales_date: '2026-11-03', payment_method: 'EDC BCA', total_amount: 185000 };
 
 // ─── Fakes ──────────────────────────────────────────────────────────────────
@@ -109,12 +112,43 @@ test('payment method lookup ignores case, spacing and zero-width characters', ()
 
 // ─── Payloads ───────────────────────────────────────────────────────────────
 
-test('sales invoice uses the trading date and a deterministic number', () => {
+test('sales invoice uses the trading date, a deterministic number, and splits PB1', () => {
   const p = toSalesInvoice(txn, cfg).sales_invoice;
   assert.equal(p.transaction_no, 'POS-2-1958');
   assert.equal(p.transaction_date, '2026-11-03');
   assert.equal(p.reference_no, '#2-1958');
-  assert.deepEqual(p.transaction_lines_attributes, [{ product_name: 'POS Sales', description: 'POS order #2-1958', quantity: 1, rate: 185000 }]);
+  // 185,000 / 1.1 = 168,181.8 → base 168,182, PB1 16,818
+  assert.deepEqual(p.transaction_lines_attributes, [
+    { product_name: 'POS Sales', description: 'POS order #2-1958', quantity: 1, rate: 168182 },
+    { product_name: 'PB1 10%', description: 'PB1 10% on #2-1958', quantity: 1, rate: 16818 },
+  ]);
+});
+
+test('PB1 split always adds back to the POS total exactly', () => {
+  assert.deepEqual(splitPb1(110000, 10), { base: 100000, pb1: 10000 });
+  assert.deepEqual(splitPb1(55000, 10), { base: 50000, pb1: 5000 });
+  assert.deepEqual(splitPb1(1, 10), { base: 1, pb1: 0 });
+  assert.deepEqual(splitPb1(185000, 0), { base: 185000, pb1: 0 });
+  for (let total = 1; total <= 300000; total += 7) {
+    const { base, pb1 } = splitPb1(total, 10);
+    assert.equal(base + pb1, total);
+    assert.equal(base, Math.round(total / 1.1 + 1e-9), `total ${total}`); // matches Total / 1.1, rounded
+    assert.ok(pb1 >= 0);
+  }
+});
+
+test('an invoice with no PB1 has a single line', () => {
+  const p = toSalesInvoice(txn, { ...cfg, pb1RatePercent: 0 }).sales_invoice;
+  assert.deepEqual(p.transaction_lines_attributes.map((l) => l.rate), [185000]);
+});
+
+test('placeholder account values are refused', async () => {
+  const { store } = fakeStore([{ ...bca, deposit_to_name: 'JURNAL_BCA_ID' }]);
+  const j = fakeJurnal();
+  const [r] = await syncBatch([txn], { store, jurnal: j.client, cfg, userId: 'u1', dryRun: false });
+  assert.equal(r.outcome, 'invalid');
+  assert.match(r.message!, /placeholder/);
+  assert.equal(j.calls.length, 0);
 });
 
 test('receive payment pays the full amount into the mapped account', () => {

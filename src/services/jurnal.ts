@@ -22,19 +22,33 @@ export interface JurnalSyncResult {
   payloads?: unknown;
 }
 
+export { tradingDate } from '../utils/time';
+
 const BATCH_SIZE = 50; // the function accepts up to 100; smaller batches finish well inside its time limit
 
-/**
- * Trading date for an iSeller order timestamp: UTC+8, with 00:00–05:59
- * counted as the previous day. Uses UTC getters, so it gives the same answer
- * whatever time zone the browser is in.
- */
-export function tradingDate(timestamp: string): string {
-  const ms = Date.parse(timestamp);
-  if (Number.isNaN(ms)) throw new Error(`Invalid order timestamp: ${timestamp}`);
-  const local = new Date(ms + 8 * 60 * 60 * 1000);
-  if (local.getUTCHours() < 6) local.setUTCDate(local.getUTCDate() - 1);
-  return local.toISOString().slice(0, 10);
+export type JurnalLogStatus = 'pending' | 'invoiced' | 'paid' | 'failed' | 'needs_review';
+
+export interface JurnalLogEntry {
+  order_reference: string;
+  status: JurnalLogStatus;
+  jurnal_invoice_no: string | null;
+  jurnal_payment_no: string | null;
+  last_error: string | null;
+}
+
+/** Current Jurnal sync state for these orders, keyed by order_reference. */
+export async function fetchJurnalStatuses(orderReferences: string[]): Promise<Map<string, JurnalLogEntry>> {
+  const map = new Map<string, JurnalLogEntry>();
+  const refs = [...new Set(orderReferences.filter(Boolean))];
+  for (let i = 0; i < refs.length; i += 200) {
+    const { data, error } = await supabase
+      .from('jurnal_sync_log')
+      .select('order_reference, status, jurnal_invoice_no, jurnal_payment_no, last_error')
+      .in('order_reference', refs.slice(i, i + 200));
+    if (error) throw new Error(`Could not load Jurnal sync status: ${error.message}`);
+    for (const row of (data ?? []) as JurnalLogEntry[]) map.set(row.order_reference, row);
+  }
+  return map;
 }
 
 /**

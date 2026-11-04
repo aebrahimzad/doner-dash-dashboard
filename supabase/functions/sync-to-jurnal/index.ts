@@ -17,6 +17,9 @@
 //   JURNAL_CUSTOMER_NAME                     optional; default "POS Customer" (must exist in Jurnal)
 //   JURNAL_SALES_PRODUCT_NAME                optional; default "POS Sales" (must exist in Jurnal)
 //   JURNAL_TRANSACTION_PREFIX                optional; default "POS"
+//   JURNAL_PB1_PRODUCT_NAME                  optional; default "PB1 10%" (must exist in Jurnal, with
+//                                            its sales account set to PB1 Tax Payable)
+//   JURNAL_PB1_RATE_PERCENT                  optional; default 10 (PB1 included in POS totals; 0 = no split)
 // SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -71,7 +74,12 @@ Deno.serve(async (req) => {
     customerName: env('JURNAL_CUSTOMER_NAME') ?? 'POS Customer',
     salesProductName: env('JURNAL_SALES_PRODUCT_NAME') ?? 'POS Sales',
     transactionNoPrefix: env('JURNAL_TRANSACTION_PREFIX') ?? 'POS',
+    pb1ProductName: env('JURNAL_PB1_PRODUCT_NAME') ?? 'PB1 10%',
+    pb1RatePercent: Number(env('JURNAL_PB1_RATE_PERCENT') ?? '10'),
   };
+  if (!Number.isFinite(cfg.pb1RatePercent) || cfg.pb1RatePercent < 0 || cfg.pb1RatePercent > 50) {
+    return json({ error: 'JURNAL_PB1_RATE_PERCENT must be a number between 0 and 50' }, 500);
+  }
 
   const db = createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 

@@ -33,13 +33,7 @@ create table if not exists public.jurnal_payment_accounts (
 create unique index if not exists jurnal_payment_accounts_method_key
   on public.jurnal_payment_accounts (lower(regexp_replace(btrim(payment_method), '\s+', ' ', 'g')));
 
--- Placeholders for the methods seen in iSeller. deposit_to_name stays empty
--- until someone enters the matching Jurnal account.
-insert into public.jurnal_payment_accounts (payment_method, jurnal_payment_method_name) values
-  ('Cash', 'Cash'),
-  ('EDC BCA', 'Credit Card'),
-  ('QRIS', 'Transfer Bank')
-on conflict do nothing;
+-- Rows are seeded in 20261104091000_seed_jurnal_payment_accounts.sql.
 
 create table if not exists public.jurnal_sync_log (
   order_reference text primary key,

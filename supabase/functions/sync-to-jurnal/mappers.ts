@@ -92,10 +92,49 @@ export function paymentTransactionNo(orderReference: string, cfg: MappingConfig)
   return `RP-${cfg.transactionNoPrefix}-${referenceSlug(orderReference)}`;
 }
 
+// ─── PB1 ────────────────────────────────────────────────────────────────────
+
+/**
+ * Splits a tax-inclusive POS total into base revenue and PB1, in whole Rupiah.
+ * base = round(total × 100 / (100 + rate)), i.e. total / 1.1 at 10%, and PB1 is
+ * the remainder, so base + pb1 always equals the total exactly (the payment then
+ * closes the invoice to the last Rupiah).
+ */
+export function splitPb1(total: number, ratePercent: number): { base: number; pb1: number } {
+  if (!(ratePercent > 0)) return { base: total, pb1: 0 };
+  // Integer arithmetic for the usual whole-number rates avoids float drift (e.g. 1.1).
+  const base = Number.isInteger(ratePercent)
+    ? Math.floor((total * 200 + (100 + ratePercent)) / (2 * (100 + ratePercent)))
+    : Math.round((total * 100) / (100 + ratePercent));
+  return { base, pb1: total - base };
+}
+
 // ─── Payloads ───────────────────────────────────────────────────────────────
 
-/** POS transaction → Jurnal SalesInvoice. transaction_date is the trading date. */
+/**
+ * POS transaction → Jurnal SalesInvoice, dated on the trading date.
+ * Two lines: base revenue on the sales product, and PB1 on the PB1 product
+ * (whose sales account in Jurnal is PB1 Tax Payable). The lines add up to
+ * total_amount exactly.
+ */
 export function toSalesInvoice(t: PosTransaction, cfg: MappingConfig): SalesInvoicePayload {
+  const { base, pb1 } = splitPb1(t.total_amount, cfg.pb1RatePercent);
+  const lines: SalesInvoicePayload['sales_invoice']['transaction_lines_attributes'] = [
+    {
+      product_name: cfg.salesProductName,
+      description: `POS order ${t.order_reference}`,
+      quantity: 1,
+      rate: base,
+    },
+  ];
+  if (pb1 > 0) {
+    lines.push({
+      product_name: cfg.pb1ProductName,
+      description: `PB1 ${cfg.pb1RatePercent}% on ${t.order_reference}`,
+      quantity: 1,
+      rate: pb1,
+    });
+  }
   return {
     sales_invoice: {
       transaction_no: invoiceTransactionNo(t.order_reference, cfg),
@@ -104,16 +143,14 @@ export function toSalesInvoice(t: PosTransaction, cfg: MappingConfig): SalesInvo
       person_name: cfg.customerName,
       reference_no: t.order_reference,
       memo: `iSeller ${t.order_reference} · ${t.payment_method}`,
-      transaction_lines_attributes: [
-        {
-          product_name: cfg.salesProductName,
-          description: `POS order ${t.order_reference}`,
-          quantity: 1,
-          rate: t.total_amount,
-        },
-      ],
+      transaction_lines_attributes: lines,
     },
   };
+}
+
+/** Seed placeholders such as "JURNAL_CASH_ID": never sent to Jurnal. */
+export function isPlaceholder(value: string): boolean {
+  return /^JURNAL_[A-Z0-9_]+_ID$/.test(value.trim());
 }
 
 /** Finds the Jurnal account for a payment method, or says why it can't. */
@@ -127,6 +164,9 @@ export function resolvePaymentAccount(
   }
   if (!account.deposit_to_name?.trim()) {
     return { ok: false, error: `Payment method "${method}" has no deposit_to_name set in jurnal_payment_accounts.` };
+  }
+  if (isPlaceholder(account.deposit_to_name)) {
+    return { ok: false, error: `Payment method "${method}" still has the placeholder "${account.deposit_to_name.trim()}". Replace it with the Jurnal account before syncing.` };
   }
   return { ok: true, account: account as PaymentAccount & { deposit_to_name: string } };
 }
