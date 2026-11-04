@@ -267,16 +267,27 @@ function ProfitabilityDashboard({
   targetPrice: number;
   yieldPct: number;
 }) {
-  const { rawCost, pkgCost, totalCost } = useMemo(() => {
+  const { rawCost, pkgCost, totalCost, totalCalories, totalProtein, totalCarbs, totalFat } = useMemo(() => {
     let raw = 0;
     let pkg = 0;
+    let cal = 0;
+    let prot = 0;
+    let carbs = 0;
+    let fat = 0;
     for (const item of items) {
       const line = Number(item.quantity) * Number(item.unit_cost);
       const isPkg = item.ingredient?.category === 'Packaging';
       if (isPkg) { pkg += line; }
       else { raw += line; }
+      if (item.ingredient && !isPkg) {
+        const factor = Number(item.quantity) / 100;
+        cal += factor * Number(item.ingredient.calories ?? 0);
+        prot += factor * Number(item.ingredient.protein_g ?? 0);
+        carbs += factor * Number(item.ingredient.carbs_g ?? 0);
+        fat += factor * Number(item.ingredient.fat_g ?? 0);
+      }
     }
-    return { rawCost: raw, pkgCost: pkg, totalCost: raw + pkg };
+    return { rawCost: raw, pkgCost: pkg, totalCost: raw + pkg, totalCalories: cal, totalProtein: prot, totalCarbs: carbs, totalFat: fat };
   }, [items]);
 
   const yieldFactor = (yieldPct > 0 && yieldPct <= 100) ? yieldPct / 100 : 1;
@@ -324,6 +335,31 @@ function ProfitabilityDashboard({
           </p>
         </div>
       </div>
+
+      {/* Nutrition Facts */}
+      <div className="mt-4 pt-3 border-t border-surface-border/50">
+        <p className="text-[10px] font-bold text-ink-tertiary uppercase tracking-[0.12em] mb-3">
+          Nutrition Facts (total)
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-1">Calories</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalCalories.toFixed(1)} kcal</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-1">Protein</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalProtein.toFixed(1)} g</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-1">Carbs</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalCarbs.toFixed(1)} g</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-1">Fats</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalFat.toFixed(1)} g</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -349,8 +385,23 @@ function BatchCostingFooter({
   publishing: boolean;
   published: boolean;
 }) {
-  const totalCost = useMemo(() => {
-    return items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_cost), 0);
+  const { totalCost, totalCalories, totalProtein, totalCarbs, totalFat } = useMemo(() => {
+    let cost = 0;
+    let cal = 0;
+    let prot = 0;
+    let carbs = 0;
+    let fat = 0;
+    for (const item of items) {
+      cost += Number(item.quantity) * Number(item.unit_cost);
+      if (item.ingredient && item.ingredient.category !== 'Packaging') {
+        const factor = Number(item.quantity) / 100;
+        cal += factor * Number(item.ingredient.calories ?? 0);
+        prot += factor * Number(item.ingredient.protein_g ?? 0);
+        carbs += factor * Number(item.ingredient.carbs_g ?? 0);
+        fat += factor * Number(item.ingredient.fat_g ?? 0);
+      }
+    }
+    return { totalCost: cost, totalCalories: cal, totalProtein: prot, totalCarbs: carbs, totalFat: fat };
   }, [items]);
 
   const yieldFactor = (yieldPct > 0 && yieldPct <= 100) ? yieldPct / 100 : 1;
@@ -385,6 +436,35 @@ function BatchCostingFooter({
           <p className="mono text-sm font-bold text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.6)]">
             {costPerUnit > 0 ? formatBaseCost(costPerUnit) : '--'}
           </p>
+        </div>
+      </div>
+
+      {/* Nutrition Facts */}
+      <div className="pt-3 border-t border-surface-border/50">
+        <p className="text-[10px] font-bold text-ink-tertiary uppercase tracking-[0.12em] mb-3">
+          Nutrition Facts
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-0.5">Calories (total)</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalCalories.toFixed(1)} kcal</p>
+            {batchYieldQty > 0 && <p className="text-[10px] text-ink-disabled mt-0.5">{(totalCalories / batchYieldQty).toFixed(2)} / {batchYieldUom}</p>}
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-0.5">Protein (total)</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalProtein.toFixed(1)} g</p>
+            {batchYieldQty > 0 && <p className="text-[10px] text-ink-disabled mt-0.5">{(totalProtein / batchYieldQty).toFixed(4)} g / {batchYieldUom}</p>}
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-0.5">Carbs (total)</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalCarbs.toFixed(1)} g</p>
+            {batchYieldQty > 0 && <p className="text-[10px] text-ink-disabled mt-0.5">{(totalCarbs / batchYieldQty).toFixed(4)} g / {batchYieldUom}</p>}
+          </div>
+          <div>
+            <p className="text-[10px] text-ink-tertiary uppercase tracking-widest mb-0.5">Fats (total)</p>
+            <p className="mono text-sm font-semibold text-ink-primary">{totalFat.toFixed(1)} g</p>
+            {batchYieldQty > 0 && <p className="text-[10px] text-ink-disabled mt-0.5">{(totalFat / batchYieldQty).toFixed(4)} g / {batchYieldUom}</p>}
+          </div>
         </div>
       </div>
 
@@ -430,6 +510,8 @@ interface RecipeConfigProps {
 function RecipeConfigCard({ recipes, activeRecipe, onSelect, onCreate, onDelete, onSave, saving }: RecipeConfigProps) {
   const [newName, setNewName] = useState('');
   const [name, setName] = useState('');
+  const [sku, setSku] = useState('');
+  const [isellerSku, setIsellerSku] = useState('');
   const [category, setCategory] = useState<RecipeCategory | ''>('');
   const [price, setPrice] = useState('');
   const [yieldPct, setYieldPct] = useState('100');
@@ -439,6 +521,8 @@ function RecipeConfigCard({ recipes, activeRecipe, onSelect, onCreate, onDelete,
   useEffect(() => {
     if (activeRecipe) {
       setName(activeRecipe.name);
+      setSku(activeRecipe.sku ?? '');
+      setIsellerSku(activeRecipe.iseller_sku ?? '');
       setCategory((activeRecipe.category as RecipeCategory) ?? '');
       setPrice(activeRecipe.target_sale_price?.toString() ?? '');
       setYieldPct(activeRecipe.expected_yield_pct?.toString() ?? '100');
@@ -446,6 +530,8 @@ function RecipeConfigCard({ recipes, activeRecipe, onSelect, onCreate, onDelete,
       setBatchUom(activeRecipe.batch_yield_uom ?? 'gram');
     } else {
       setName('');
+      setSku('');
+      setIsellerSku('');
       setCategory('');
       setPrice('');
       setYieldPct('100');
@@ -464,6 +550,8 @@ function RecipeConfigCard({ recipes, activeRecipe, onSelect, onCreate, onDelete,
   function handleSave() {
     onSave({
       name: name.trim() || activeRecipe?.name,
+      sku: sku.trim() || null,
+      iseller_sku: isellerSku.trim() || null,
       category: (category || null) as RecipeCategory | null,
       target_sale_price: parseFloat(price) || null,
       expected_yield_pct: parseFloat(yieldPct) || 100,
@@ -541,6 +629,27 @@ function RecipeConfigCard({ recipes, activeRecipe, onSelect, onCreate, onDelete,
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+          </div>
+
+          <div>
+            <label className="field-label">Internal SKU</label>
+            <input
+              className="field-input"
+              placeholder="e.g. SKU-001"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="field-label">iSeller POS SKU</label>
+            <input
+              className="field-input"
+              placeholder="SKU from iSeller POS"
+              value={isellerSku}
+              onChange={(e) => setIsellerSku(e.target.value)}
+            />
+            <p className="text-[10px] text-ink-tertiary mt-1">Used to match POS orders for COGS calculation</p>
           </div>
 
           <div>
@@ -782,7 +891,7 @@ export default function RecipeBuilder() {
       .from('recipe_items')
       .select(`
         *,
-        ingredient:ingredients(id,name,current_base_unit_cost,base_uom,category,created_at),
+        ingredient:ingredients(id,name,current_base_unit_cost,base_uom,category,calories,protein_g,carbs_g,fat_g,created_at),
         broiler_yield:broiler_yields(id,name,true_cost_per_gram,base_meat_id,ap_weight,marinade_batch_cost,final_shaved_yield,created_at)
       `)
       .eq('recipe_id', recipeId)
@@ -815,6 +924,8 @@ export default function RecipeBuilder() {
       .from('recipes')
       .update({
         name: updates.name,
+        sku: updates.sku,
+        iseller_sku: updates.iseller_sku,
         category: updates.category,
         target_sale_price: updates.target_sale_price,
         expected_yield_pct: updates.expected_yield_pct,

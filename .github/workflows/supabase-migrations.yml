@@ -1,5 +1,6 @@
-# Applies new files in supabase/migrations to the hosted Supabase project
-# whenever they land on main (or on demand from the Actions tab).
+# Applies new files in supabase/migrations to the hosted Supabase project and
+# deploys supabase/functions whenever they land on main (or on demand from the
+# Actions tab).
 #
 # Secrets, in the "production" environment (Settings → Environments →
 # production) or as repository secrets (Settings → Secrets and variables →
@@ -16,7 +17,7 @@ name: Supabase migrations
 on:
   push:
     branches: [main]
-    paths: ["supabase/migrations/**"]
+    paths: ["supabase/migrations/**", "supabase/functions/**", "supabase/config.toml"]
   workflow_dispatch:
 
 # Never run two pushes against the database at once.
@@ -57,3 +58,10 @@ jobs:
 
       - name: Apply migrations
         run: supabase db push
+
+      # Edge functions in supabase/functions (settings such as verify_jwt come
+      # from supabase/config.toml). Their secrets, e.g. ISELLER_CLIENT_ID and
+      # ISELLER_CLIENT_SECRET, are set in Supabase, not here.
+      - name: Deploy edge functions
+        if: hashFiles('supabase/functions/**') != ''
+        run: supabase functions deploy --use-api --project-ref "$SUPABASE_PROJECT_REF"

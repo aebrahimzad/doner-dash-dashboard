@@ -11,6 +11,10 @@ export interface Ingredient {
   current_base_unit_cost: number;
   base_uom: string;
   is_active: boolean;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
   created_at: string;
 }
 
@@ -50,6 +54,8 @@ export type RecipeCategory = typeof RECIPE_CATEGORIES[number];
 export interface Recipe {
   id: string;
   name: string;
+  sku: string | null;
+  iseller_sku: string | null;
   category: RecipeCategory | null;
   target_sale_price: number | null;
   expected_yield_pct: number | null;

@@ -1,7 +1,7 @@
-import { MapPin, Package, ShoppingCart, Flame, BookOpen, Factory, BarChart2, ClipboardList, Repeat2, ChevronDown, Scale } from 'lucide-react';
-import { useOutlet } from '../lib/outlet';
+import { MapPin, Package, ShoppingCart, Flame, BookOpen, Factory, BarChart2, ClipboardList, Repeat2, ChevronDown, Scale, ShoppingBag, Beef } from 'lucide-react';
+import { useOutlet, ALL_LOCATIONS } from '../lib/outlet';
 
-export type Module = 'data' | 'invoice' | 'broiler' | 'recipe' | 'production' | 'toll' | 'stats' | 'shift' | 'requisitions';
+export type Module = 'data' | 'invoice' | 'broiler' | 'recipe' | 'production' | 'toll' | 'meat' | 'requisitions' | 'stats' | 'shift' | 'sales';
 
 const NAV_ITEMS: { id: Module; label: string; sublabel: string; Icon: typeof Package }[] = [
   { id: 'data',         label: 'Data Management',    sublabel: 'Vendors & Ingredients',    Icon: Package       },
@@ -10,9 +10,11 @@ const NAV_ITEMS: { id: Module; label: string; sublabel: string; Icon: typeof Pac
   { id: 'recipe',       label: 'Recipe Builder',     sublabel: 'BOM & COGS',               Icon: BookOpen      },
   { id: 'production',   label: 'Production Run',     sublabel: 'Dynamic Batch Scaling',    Icon: Scale         },
   { id: 'toll',         label: 'Toll Manufacturing', sublabel: 'WIP Loop & Burdened Cost', Icon: Factory       },
+  { id: 'meat',         label: 'Meat Tracker',       sublabel: 'CK Receiving → Dispatch',  Icon: Beef          },
   { id: 'requisitions', label: 'Requisitions',       sublabel: 'Hub → Retail Transfers',   Icon: Repeat2       },
   { id: 'stats',        label: 'Statistics',         sublabel: 'Spend & Revenue Insights', Icon: BarChart2     },
   { id: 'shift',        label: 'Shift Handoff',      sublabel: 'POS Depletion & Handoff',  Icon: ClipboardList },
+  { id: 'sales',        label: 'Sales Sync',         sublabel: 'iSeller POS Import',       Icon: ShoppingBag   },
 ];
 
 interface Props {
@@ -23,7 +25,7 @@ interface Props {
 }
 
 export default function Navigation({ active, onChange, onSignOut, userEmail }: Props) {
-  const { outlets, selectedOutlet, setSelectedOutlet, loading: outletLoading } = useOutlet();
+  const { isellerLocations, selectedLocation, setSelectedLocation } = useOutlet();
 
   return (
     <nav className="bg-surface-card border-b border-surface-border sticky top-0 z-50 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_4px_16px_rgba(0,0,0,0.5)]">
@@ -70,24 +72,20 @@ export default function Navigation({ active, onChange, onSignOut, userEmail }: P
         {/* Location selector */}
         <div className="flex items-center px-4 border-l border-surface-border shrink-0 gap-2">
           <MapPin size={12} className="text-amber-DEFAULT shrink-0" />
-          {outletLoading ? (
-            <div className="h-4 w-28 bg-surface-border rounded animate-pulse" />
-          ) : outlets.length === 0 ? (
-            <span className="text-xs text-ink-disabled">No outlets</span>
+          {isellerLocations.length === 0 ? (
+            <span className="text-xs text-ink-disabled">No locations</span>
           ) : (
             <div className="relative">
               <select
-                value={selectedOutlet?.id ?? ''}
-                onChange={(e) => {
-                  const found = outlets.find((o) => o.id === e.target.value);
-                  if (found) setSelectedOutlet(found);
-                }}
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
                 className="appearance-none bg-surface-raised border border-surface-border rounded-sm
                            text-xs text-ink-primary pl-2.5 pr-7 py-1.5 cursor-pointer
-                           focus:outline-none focus:border-amber-dim transition-colors max-w-[160px]"
+                           focus:outline-none focus:border-amber-dim transition-colors max-w-[180px]"
               >
-                {outlets.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
+                <option value={ALL_LOCATIONS}>{ALL_LOCATIONS}</option>
+                {isellerLocations.map((loc) => (
+                  <option key={loc} value={loc}>{loc}</option>
                 ))}
               </select>
               <ChevronDown

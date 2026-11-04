@@ -4,3 +4,7 @@ project_id = "doner-dash-dashboard"
 
 [db]
 major_version = 17
+
+# Called from the browser with the anon key (SalesSync, services/iseller.ts).
+[functions.iseller-proxy]
+verify_jwt = false

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Check, X, Building2, Wheat, Upload, FileText, AlertTriangle, CheckCircle, RefreshCw, Archive, ArchiveRestore, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X, Building2, Wheat, AlertTriangle, CheckCircle, Archive, ArchiveRestore, Loader2, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Vendor, Ingredient } from '../types';
 import { UOM_CONVERSIONS } from '../types';
 import { formatBaseCost } from '../utils/formatting';
+import BulkImport from './BulkImport';
 
 const CATEGORY_SUGGESTIONS = ['Dry Goods', 'Meat', 'Packaging', 'Produce', 'Dairy', 'Seafood', 'Spices & Seasonings'];
 
@@ -181,9 +182,14 @@ interface IngredientFormState {
   name: string;
   base_uom: string;
   category: string;
+  cost: string;
+  calories: string;
+  protein_g: string;
+  carbs_g: string;
+  fat_g: string;
 }
 
-const EMPTY_FORM: IngredientFormState = { name: '', base_uom: 'gram', category: '' };
+const EMPTY_FORM: IngredientFormState = { name: '', base_uom: 'gram', category: '', cost: '', calories: '', protein_g: '', carbs_g: '', fat_g: '' };
 
 function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -212,6 +218,11 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
       name,
       base_uom: form.base_uom,
       category: form.category.trim() || null,
+      current_base_unit_cost: parseFloat(form.cost) || 0,
+      calories: parseFloat(form.calories) || 0,
+      protein_g: parseFloat(form.protein_g) || 0,
+      carbs_g: parseFloat(form.carbs_g) || 0,
+      fat_g: parseFloat(form.fat_g) || 0,
     });
     if (error) { setError(error.message); return; }
     setForm(EMPTY_FORM);
@@ -220,7 +231,15 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
 
   function startEdit(ing: Ingredient) {
     setEditId(ing.id);
-    setEditForm({ name: ing.name, base_uom: ing.base_uom, category: ing.category ?? '' });
+    setEditForm({
+      name: ing.name,
+      base_uom: ing.base_uom,
+      category: ing.category ?? '',
+      calories: String(ing.calories ?? 0),
+      protein_g: String(ing.protein_g ?? 0),
+      carbs_g: String(ing.carbs_g ?? 0),
+      fat_g: String(ing.fat_g ?? 0),
+    });
   }
 
   async function saveEdit() {
@@ -235,6 +254,10 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
         name: editForm.name.trim(),
         base_uom: newUom,
         category: editForm.category.trim() || null,
+        calories: parseFloat(editForm.calories) || 0,
+        protein_g: parseFloat(editForm.protein_g) || 0,
+        carbs_g: parseFloat(editForm.carbs_g) || 0,
+        fat_g: parseFloat(editForm.fat_g) || 0,
       })
       .eq('id', editId);
     if (error) { setError(error.message); return; }
@@ -318,19 +341,23 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
               <th>Ingredient Name</th>
               <th>Category</th>
               <th>Base UOM</th>
-              <th className="text-right">Current Base Cost / unit</th>
+              <th className="text-right">Cost / unit</th>
+              <th className="text-right">Cal</th>
+              <th className="text-right">Protein</th>
+              <th className="text-right">Carbs</th>
+              <th className="text-right">Fat</th>
               <th className="w-24 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={5} className="text-center text-ink-tertiary py-8">Loading...</td>
+                <td colSpan={9} className="text-center text-ink-tertiary py-8">Loading...</td>
               </tr>
             )}
             {!loading && ingredients.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center text-ink-tertiary py-8">No ingredients yet.</td>
+                <td colSpan={9} className="text-center text-ink-tertiary py-8">No ingredients yet.</td>
               </tr>
             )}
             {ingredients.map((ing) => (
@@ -398,6 +425,36 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
                   )}
                 </td>
 
+                {/* Macros */}
+                <td className="text-right">
+                  {editId === ing.id ? (
+                    <input type="number" min="0" step="any" className="field-input !py-1 !text-xs !w-16 text-right" value={editForm.calories} onChange={(e) => setEditForm((f) => ({ ...f, calories: e.target.value }))} />
+                  ) : (
+                    <span className="mono text-xs text-ink-secondary">{Number(ing.calories) || 0}</span>
+                  )}
+                </td>
+                <td className="text-right">
+                  {editId === ing.id ? (
+                    <input type="number" min="0" step="any" className="field-input !py-1 !text-xs !w-16 text-right" value={editForm.protein_g} onChange={(e) => setEditForm((f) => ({ ...f, protein_g: e.target.value }))} />
+                  ) : (
+                    <span className="mono text-xs text-ink-secondary">{Number(ing.protein_g) || 0}</span>
+                  )}
+                </td>
+                <td className="text-right">
+                  {editId === ing.id ? (
+                    <input type="number" min="0" step="any" className="field-input !py-1 !text-xs !w-16 text-right" value={editForm.carbs_g} onChange={(e) => setEditForm((f) => ({ ...f, carbs_g: e.target.value }))} />
+                  ) : (
+                    <span className="mono text-xs text-ink-secondary">{Number(ing.carbs_g) || 0}</span>
+                  )}
+                </td>
+                <td className="text-right">
+                  {editId === ing.id ? (
+                    <input type="number" min="0" step="any" className="field-input !py-1 !text-xs !w-16 text-right" value={editForm.fat_g} onChange={(e) => setEditForm((f) => ({ ...f, fat_g: e.target.value }))} />
+                  ) : (
+                    <span className="mono text-xs text-ink-secondary">{Number(ing.fat_g) || 0}</span>
+                  )}
+                </td>
+
                 {/* Actions */}
                 <td className="text-right">
                   {editId === ing.id ? (
@@ -460,6 +517,11 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
         >
           {UOM_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
+        <input type="number" min="0" step="any" className="field-input !w-28 shrink-0" placeholder="Cost/unit" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} />
+        <input type="number" min="0" step="any" className="field-input !w-20 shrink-0" placeholder="Cal" value={form.calories} onChange={(e) => setForm((f) => ({ ...f, calories: e.target.value }))} />
+        <input type="number" min="0" step="any" className="field-input !w-20 shrink-0" placeholder="Prot (g)" value={form.protein_g} onChange={(e) => setForm((f) => ({ ...f, protein_g: e.target.value }))} />
+        <input type="number" min="0" step="any" className="field-input !w-20 shrink-0" placeholder="Carbs (g)" value={form.carbs_g} onChange={(e) => setForm((f) => ({ ...f, carbs_g: e.target.value }))} />
+        <input type="number" min="0" step="any" className="field-input !w-20 shrink-0" placeholder="Fat (g)" value={form.fat_g} onChange={(e) => setForm((f) => ({ ...f, fat_g: e.target.value }))} />
         <button className="btn-primary shrink-0" onClick={addIngredient} disabled={!form.name.trim()}>
           <Plus size={14} /> Add
         </button>
@@ -468,371 +530,135 @@ function IngredientTable({ refreshTrigger }: { refreshTrigger?: number }) {
   );
 }
 
-// ─── Bulk Import ─────────────────────────────────────────────────────────────
+// ─── Prep Batch Generator ─────────────────────────────────────────────────
 
-interface ParsedRow {
-  vendor: string;
-  ingredientName: string;
-  category: string;
-  baseUom: string;
-  cleanPrice: number;
-}
+const PREP_BATCHES = [
+  { name: 'Saffron Water', yieldQty: 500, yieldUom: 'ml', source: 'Bahraman Negin Saffron', sourceQty: 1 },
+  { name: 'Fermented Black Garlic', yieldQty: 750, yieldUom: 'gram', source: 'Garlic', sourceQty: 1000 },
+  { name: 'Fresh Garlic Paste', yieldQty: 850, yieldUom: 'gram', source: 'Garlic', sourceQty: 1000 },
+  { name: 'Fresh Lemon Juice', yieldQty: 400, yieldUom: 'ml', source: 'Local Lemon', sourceQty: 1000 },
+];
 
-interface ImportResult {
-  vendorsCreated: number;
-  ingredientsUpserted: number;
-  errors: string[];
-}
+function PrepBatchGenerator({ onGenerated }: { onGenerated: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ success: string | null; error: string | null }>({ success: null, error: null });
 
-function parsePrice(raw: string): number {
-  const s = String(raw ?? '').replace(/,/g, '').replace(/[^0-9.]/g, '');
-  return parseFloat(s) || 0;
-}
-
-function parseCSVFile(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  function parseLine(line: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQuotes = !inQuotes; continue; }
-      if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; continue; }
-      current += ch;
-    }
-    result.push(current.trim());
-    return result;
-  }
-
-  return { headers: parseLine(lines[0]), rows: lines.slice(1).map(parseLine) };
-}
-
-function BulkImport({ onImported }: { onImported: () => void }) {
-  const [dragging,   setDragging]   = useState(false);
-  const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
-  const [fileName,   setFileName]   = useState('');
-  const [importing,  setImporting]  = useState(false);
-  const [result,     setResult]     = useState<ImportResult | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
-
-  function handleFile(file: File) {
-    if (!file.name.match(/\.csv$/i)) {
-      setParseError('Only .csv files are supported.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const { headers, rows } = parseCSVFile(text);
-
-        // Case-insensitive header index lookup
-        const hIdx: Record<string, number> = {};
-        headers.forEach((h, i) => { hIdx[h.toLowerCase().trim()] = i; });
-
-        const iVendor = hIdx['vendor']          ?? -1;
-        const iName   = hIdx['ingredient name'] ?? -1;
-        const iCat    = hIdx['category']        ?? -1;
-        const iUom    = hIdx['base uom']        ?? -1;
-        const iPrice  = hIdx['clean price']     ?? -1;
-
-        if (iName === -1) {
-          setParseError('Missing required column "Ingredient Name". Check that your CSV headers match exactly.');
-          return;
-        }
-
-        const parsed: ParsedRow[] = [];
-        for (const row of rows) {
-          const ingredientName = (row[iName] ?? '').trim();
-          if (!ingredientName) continue;
-          parsed.push({
-            vendor:         iVendor >= 0 ? (row[iVendor] ?? '').trim()  : '',
-            ingredientName,
-            category:       iCat    >= 0 ? (row[iCat]    ?? '').trim()  : '',
-            baseUom:        iUom    >= 0 ? (row[iUom]    ?? '').trim()  : 'gram',
-            cleanPrice:     iPrice  >= 0 ? parsePrice(row[iPrice] ?? '') : 0,
-          });
-        }
-
-        if (parsed.length === 0) {
-          setParseError('No valid data rows found. Make sure your CSV has data rows below the header.');
-          return;
-        }
-
-        setParseError(null);
-        setParsedRows(parsed);
-        setFileName(file.name);
-        setResult(null);
-      } catch (err) {
-        setParseError((err as Error).message ?? 'Failed to parse CSV.');
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  async function runImport() {
-    if (!parsedRows?.length) return;
-    setImporting(true);
-    setResult(null);
-
-    let vendorsCreated = 0;
-    let ingredientsUpserted = 0;
-    const errors: string[] = [];
+  async function generate() {
+    setRunning(true);
+    setResult({ success: null, error: null });
 
     try {
-      // ── Step 1: resolve vendor names → UUIDs ─────────────────────────────
-      const uniqueVendorNames = [...new Set(parsedRows.map((r) => r.vendor).filter(Boolean))];
-      const vendorMap = new Map<string, string>(); // lowercase name → uuid
+      // Step 1: Look up source ingredients
+      const sourceNames = [...new Set(PREP_BATCHES.map((b) => b.source))];
+      const { data: sources, error: srcErr } = await supabase
+        .from('ingredients')
+        .select('id, name, current_base_unit_cost')
+        .in('name', sourceNames);
+      if (srcErr) throw new Error(`Source ingredient lookup failed: ${srcErr.message}`);
 
-      if (uniqueVendorNames.length > 0) {
-        // Fetch already-existing vendors by exact name
-        const { data: existing, error: fetchErr } = await supabase
-          .from('vendors')
-          .select('id, name')
-          .in('name', uniqueVendorNames);
-        if (fetchErr) throw new Error(`Vendor lookup failed: ${fetchErr.message}`);
+      const srcMap = new Map((sources ?? []).map((s) => [s.name, s]));
+      const missing = sourceNames.filter((n) => !srcMap.has(n));
+      if (missing.length > 0) throw new Error(`Source ingredients not found: ${missing.join(', ')}`);
 
-        for (const v of existing ?? []) {
-          vendorMap.set(v.name.toLowerCase(), v.id as string);
-        }
+      // Step 2: Calculate burdened costs and update derived ingredients
+      const derivedNames = PREP_BATCHES.map((b) => b.name);
+      const { data: derivedIngredients, error: dErr } = await supabase
+        .from('ingredients')
+        .select('id, name')
+        .in('name', derivedNames);
+      if (dErr) throw new Error(`Derived ingredient lookup failed: ${dErr.message}`);
 
-        // Insert only the genuinely new ones
-        const newNames = uniqueVendorNames.filter((n) => !vendorMap.has(n.toLowerCase()));
-        if (newNames.length > 0) {
-          const { data: created, error: insErr } = await supabase
-            .from('vendors')
-            .insert(newNames.map((name) => ({ name })))
-            .select('id, name');
-          if (insErr) throw new Error(`Vendor insert failed: ${insErr.message}`);
-          for (const v of created ?? []) {
-            vendorMap.set((v.name as string).toLowerCase(), v.id as string);
-          }
-          vendorsCreated = newNames.length;
-        }
+      const derivedMap = new Map((derivedIngredients ?? []).map((d) => [d.name, d]));
+      const missingDerived = derivedNames.filter((n) => !derivedMap.has(n));
+      if (missingDerived.length > 0) throw new Error(`Derived ingredients not found in master list: ${missingDerived.join(', ')}. Import them first.`);
+
+      for (const batch of PREP_BATCHES) {
+        const src = srcMap.get(batch.source)!;
+        const costPerUnit = (src.current_base_unit_cost * batch.sourceQty) / batch.yieldQty;
+        const derived = derivedMap.get(batch.name)!;
+        const { error: updErr } = await supabase
+          .from('ingredients')
+          .update({ current_base_unit_cost: costPerUnit })
+          .eq('id', derived.id);
+        if (updErr) throw new Error(`Failed to update cost for "${batch.name}": ${updErr.message}`);
       }
 
-      // ── Step 2: upsert ingredients (name is the conflict key) ────────────
-      // Build insert objects — only include current_base_unit_cost when > 0
-      // so existing costs are not overwritten by blank/zero Clean Price cells.
-      const inserts = parsedRows.map((row) => {
-        const base: Record<string, unknown> = {
-          name:     row.ingredientName,
-          category: row.category || null,
-          base_uom: row.baseUom  || 'gram',
-        };
-        if (row.cleanPrice > 0) base.current_base_unit_cost = row.cleanPrice;
-        return base;
-      });
+      // Step 3: Upsert recipes as Prep Batch
+      for (const batch of PREP_BATCHES) {
+        const { data: recipe, error: recErr } = await supabase
+          .from('recipes')
+          .upsert({
+            name: batch.name,
+            category: 'Prep Batch',
+            batch_yield_qty: batch.yieldQty,
+            batch_yield_uom: batch.yieldUom,
+          }, { onConflict: 'name' })
+          .select('id')
+          .single();
+        if (recErr) throw new Error(`Recipe upsert failed for "${batch.name}": ${recErr.message}`);
 
-      const { data: upserted, error: ingErr } = await supabase
-        .from('ingredients')
-        .upsert(inserts, { onConflict: 'name' })
-        .select('id');
-      if (ingErr) throw new Error(`Ingredient upsert failed: ${ingErr.message}`);
-      ingredientsUpserted = upserted?.length ?? inserts.length;
+        // Clear existing BOM and re-insert
+        await supabase.from('recipe_items').delete().eq('recipe_id', recipe.id);
 
-    } catch (err) {
-      errors.push((err as Error).message);
+        const src = srcMap.get(batch.source)!;
+        const { error: bomErr } = await supabase.from('recipe_items').insert({
+          recipe_id: recipe.id,
+          ingredient_id: src.id,
+          quantity: batch.sourceQty,
+          unit_cost: src.current_base_unit_cost,
+        });
+        if (bomErr) throw new Error(`BOM insert failed for "${batch.name}": ${bomErr.message}`);
+      }
+
+      setResult({ success: `4 Prep Batches generated and costs updated successfully.`, error: null });
+      onGenerated();
+    } catch (e) {
+      setResult({ success: null, error: (e as Error).message });
+    } finally {
+      setRunning(false);
     }
-
-    setResult({ vendorsCreated, ingredientsUpserted, errors });
-    setImporting(false);
-    if (errors.length === 0) onImported();
-  }
-
-  function reset() {
-    setParsedRows(null);
-    setFileName('');
-    setResult(null);
-    setParseError(null);
   }
 
   return (
     <div className="panel">
       <div className="panel-header">
         <div className="flex items-center gap-3">
-          <Upload size={15} className="text-amber-DEFAULT" />
-          <h2 className="text-sm font-semibold text-ink-primary tracking-wide">Bulk Import — Master Ingredient List</h2>
+          <Zap size={15} className="text-amber-DEFAULT" />
+          <h2 className="text-sm font-semibold text-ink-primary tracking-wide">Auto-Generate Prep Batches</h2>
         </div>
-        {parsedRows && !result && (
-          <button className="btn-ghost !text-xs" onClick={reset}>
-            <RefreshCw size={11} /> Different file
-          </button>
-        )}
       </div>
+      <div className="p-6 space-y-4">
+        <p className="text-xs text-ink-tertiary leading-relaxed">
+          Generates <span className="text-ink-secondary font-medium">Saffron Water</span>,{' '}
+          <span className="text-ink-secondary font-medium">Fermented Black Garlic</span>,{' '}
+          <span className="text-ink-secondary font-medium">Fresh Garlic Paste</span>, and{' '}
+          <span className="text-ink-secondary font-medium">Fresh Lemon Juice</span> as Prep Batch recipes.
+          Calculates their per-unit cost from raw ingredient prices and updates the ingredient master.
+        </p>
 
-      <div className="p-6 space-y-5">
-
-        {/* Expected format hint */}
-        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-surface-raised border border-surface-border text-xs text-ink-tertiary">
-          <FileText size={13} className="text-amber-DEFAULT shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold text-ink-secondary">Expected CSV headers (exact):</span>{' '}
-            <code className="mono text-ink-secondary bg-surface-muted px-1 py-0.5 rounded text-[11px]">
-              Vendor, Ingredient Name, Category, Base UOM, Clean Price
-            </code>
-            <p className="mt-1">
-              Vendors are created automatically if they do not yet exist — no pre-setup required.
-              Ingredients are upserted by name; existing records are updated with new category, UOM, and price.
-            </p>
+        {result.success && (
+          <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-emerald-900/20 border border-emerald-800/40">
+            <CheckCircle size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-xs font-medium text-emerald-400">{result.success}</p>
           </div>
-        </div>
-
-        {parseError && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded bg-red-900/30 border border-red-800/50 text-red-400 text-xs">
-            <AlertTriangle size={13} className="shrink-0" /> {parseError}
+        )}
+        {result.error && (
+          <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-red-900/20 border border-red-800/40">
+            <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{result.error}</p>
           </div>
         )}
 
-        {/* ── Drop zone ── */}
-        {!parsedRows && !result && (
-          <div
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const f = e.dataTransfer.files[0];
-              if (f) handleFile(f);
-            }}
-            className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors
-              ${dragging
-                ? 'border-amber-dim bg-amber-dim/5'
-                : 'border-surface-muted hover:border-surface-muted/80 hover:bg-surface-hover'
-              }`}
-            onClick={() => document.getElementById('dm-bulk-csv-input')?.click()}
-          >
-            <input
-              id="dm-bulk-csv-input"
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-                e.target.value = '';
-              }}
-            />
-            <div className="flex flex-col items-center gap-3">
-              <Upload size={32} className="text-ink-tertiary" />
-              <div>
-                <p className="text-sm font-medium text-ink-secondary">Drop your .csv here or click to browse</p>
-                <p className="text-xs text-ink-tertiary mt-1">Headers must match the format shown above</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Preview table ── */}
-        {parsedRows && !result && (
-          <div className="space-y-4">
-            {/* File info bar */}
-            <div className="flex items-center gap-3 px-4 py-3 bg-surface-raised rounded border border-surface-border">
-              <FileText size={14} className="text-amber-DEFAULT shrink-0" />
-              <span className="text-sm font-medium text-ink-primary truncate max-w-xs">{fileName}</span>
-              <span className="tag bg-surface-border text-ink-secondary shrink-0">{parsedRows.length} rows</span>
-              <span className="tag bg-surface-border text-ink-secondary shrink-0">
-                {[...new Set(parsedRows.map((r) => r.vendor).filter(Boolean))].length} vendors
-              </span>
-            </div>
-
-            <div className="overflow-x-auto rounded border border-surface-border">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="w-8">#</th>
-                    <th>Vendor</th>
-                    <th>Ingredient Name</th>
-                    <th>Category</th>
-                    <th>Base UOM</th>
-                    <th className="text-right">Clean Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parsedRows.slice(0, 100).map((row, i) => (
-                    <tr key={i}>
-                      <td className="text-ink-disabled text-xs mono">{i + 1}</td>
-                      <td className="text-ink-secondary text-xs">{row.vendor || <span className="text-ink-disabled">—</span>}</td>
-                      <td className="font-medium text-ink-primary">{row.ingredientName}</td>
-                      <td>
-                        {row.category
-                          ? <span className="tag bg-surface-border text-ink-secondary">{row.category}</span>
-                          : <span className="text-ink-disabled text-xs">—</span>}
-                      </td>
-                      <td>
-                        <span className="tag bg-surface-raised text-ink-secondary">{row.baseUom || 'gram'}</span>
-                      </td>
-                      <td className="text-right mono text-xs text-amber-DEFAULT">
-                        {row.cleanPrice > 0
-                          ? row.cleanPrice.toLocaleString()
-                          : <span className="text-ink-disabled">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {parsedRows.length > 100 && (
-                <p className="text-center text-xs text-ink-tertiary py-2 border-t border-surface-border">
-                  Showing first 100 of {parsedRows.length} rows — all will be imported.
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-ink-tertiary">
-                <span className="text-emerald-400 font-medium">{parsedRows.length} ingredient{parsedRows.length !== 1 ? 's' : ''}</span> ready.
-                New vendors will be created automatically.
-              </p>
-              <button className="btn-primary" onClick={runImport} disabled={importing}>
-                {importing ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-surface-base border-t-transparent rounded-full animate-spin" />
-                    Importing…
-                  </>
-                ) : (
-                  <><CheckCircle size={14} /> Confirm &amp; Import</>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Results ── */}
-        {result && (
-          <div className="space-y-4">
-            {result.errors.length === 0 ? (
-              <div className="flex items-start gap-3 px-5 py-4 rounded-lg bg-emerald-900/20 border border-emerald-800/40">
-                <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-emerald-400">Import complete</p>
-                  <p className="text-xs text-ink-secondary mt-1">
-                    {result.ingredientsUpserted} ingredient{result.ingredientsUpserted !== 1 ? 's' : ''} saved to the database
-                    {result.vendorsCreated > 0 && (
-                      <> · <span className="text-amber-DEFAULT">{result.vendorsCreated} new vendor{result.vendorsCreated !== 1 ? 's' : ''} created</span></>
-                    )}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="px-5 py-4 rounded-lg bg-red-900/20 border border-red-800/40 space-y-2">
-                <div className="flex items-center gap-2 text-red-400 text-sm font-semibold">
-                  <AlertTriangle size={15} /> Import failed
-                </div>
-                {result.errors.map((e, i) => (
-                  <p key={i} className="text-xs text-red-300 pl-4 border-l border-red-800">{e}</p>
-                ))}
-              </div>
-            )}
-            <div className="flex justify-end">
-              <button className="btn-secondary !text-xs" onClick={reset}>
-                <RefreshCw size={12} /> Import another file
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          className="flex items-center gap-2 px-5 py-2.5 rounded-md text-xs font-semibold
+                     bg-amber-DEFAULT/10 border border-amber-DEFAULT/30 text-amber-DEFAULT
+                     hover:bg-amber-DEFAULT/20 hover:border-amber-DEFAULT/50 transition-colors"
+          onClick={generate}
+          disabled={running}
+        >
+          {running ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+          {running ? 'Generating...' : 'Generate Prep Batches'}
+        </button>
       </div>
     </div>
   );
@@ -916,7 +742,10 @@ export default function DataManagement() {
         <VendorTable refreshTrigger={refreshTrigger} />
         <IngredientTable refreshTrigger={refreshTrigger} />
       </div>
-      <BulkImport onImported={() => setRefreshTrigger((n) => n + 1)} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <BulkImport onImported={() => setRefreshTrigger((n) => n + 1)} />
+        <PrepBatchGenerator onGenerated={() => setRefreshTrigger((n) => n + 1)} />
+      </div>
     </div>
   );
 }

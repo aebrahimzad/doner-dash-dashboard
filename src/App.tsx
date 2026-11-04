@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { OutletProvider } from './lib/outlet';
+import { ToastProvider } from './lib/toast';
 import Navigation, { type Module } from './components/Navigation';
 import DataManagement from './modules/DataManagement';
 import InvoiceCapture from './modules/InvoiceCapture';
@@ -8,9 +9,11 @@ import BroilerYield from './modules/BroilerYield';
 import RecipeBuilder from './modules/RecipeBuilder';
 import ProductionRun from './modules/ProductionRun';
 import TollManufacturing from './modules/TollManufacturing';
+import MeatTracker from './modules/MeatTracker';
 import Statistics from './modules/Statistics';
 import ShiftHandoff from './modules/ShiftHandoff';
 import Requisitions from './modules/Requisitions';
+import SalesSync from './modules/SalesSync';
 
 function Dashboard() {
   const [module, setModule] = useState<Module>('data');
@@ -26,9 +29,11 @@ function Dashboard() {
           {module === 'recipe'       && <RecipeBuilder />}
           {module === 'production'   && <ProductionRun />}
           {module === 'toll'         && <TollManufacturing />}
+          {module === 'meat'         && <MeatTracker />}
           {module === 'requisitions' && <Requisitions />}
           {module === 'stats'        && <Statistics />}
           {module === 'shift'        && <ShiftHandoff />}
+          {module === 'sales'        && <SalesSync />}
         </main>
       </div>
     </OutletProvider>
@@ -37,10 +42,12 @@ function Dashboard() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/*" element={<Dashboard />} />
-      </Routes>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/*" element={<Dashboard />} />
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
