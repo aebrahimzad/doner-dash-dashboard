@@ -1,0 +1,2 @@
+export const CENTRAL_KITCHEN_ID   = '00000000-0000-0000-0001-000000000000';
+export const CENTRAL_KITCHEN_NAME = 'Central Kitchen';

@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-surface-base text-ink-primary;
+    font-family: 'Space Grotesk', Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    @apply border-surface-border;
+  }
+
+  h1, h2, h3 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-surface-base; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-muted rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-disabled; }
+}
+
+@layer components {
+
+  /* ── Labels ─────────────────────────────────────────────────────── */
+  .field-label {
+    @apply block text-[10px] font-semibold text-ink-tertiary uppercase tracking-[0.12em] mb-1.5;
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────────── */
+  .field-input {
+    @apply w-full bg-surface-raised border border-surface-border rounded-lg
+           text-ink-primary text-sm px-3.5 py-2.5
+           focus:outline-none focus:border-amber-dim
+           placeholder:text-ink-disabled transition-all duration-150;
+  }
+
+  .field-input:focus {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+  }
+
+  .field-select {
+    @apply field-input cursor-pointer;
+  }
+
+  /* ── Primary CTA — sharp / high-contrast ────────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-none
+           bg-amber hover:bg-amber-glow active:scale-[0.98]
+           text-black text-xs font-bold tracking-widest uppercase
+           transition-all duration-100 focus:outline-none
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  /* ── Secondary ──────────────────────────────────────────────────── */
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-sm
+           bg-surface-border hover:bg-surface-muted text-ink-primary text-xs font-semibold
+           transition-colors focus:outline-none;
+  }
+
+  /* ── Danger ─────────────────────────────────────────────────────── */
+  .btn-danger {
+    @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-sm
+           bg-red-900/40 hover:bg-red-800/60 text-red-400 hover:text-red-300 text-xs font-medium
+           transition-colors;
+  }
+
+  /* ── Ghost ──────────────────────────────────────────────────────── */
+  .btn-ghost {
+    @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-sm
+           hover:bg-surface-hover text-ink-secondary hover:text-ink-primary text-xs font-medium
+           transition-colors;
+  }
+
+  /* ── Tables ─────────────────────────────────────────────────────── */
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+
+  .data-table thead tr {
+    @apply border-b border-surface-border;
+  }
+
+  .data-table thead th {
+    @apply px-4 py-3 text-left text-[10px] font-bold text-ink-tertiary uppercase tracking-[0.1em]
+           bg-surface-raised whitespace-nowrap;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-surface-border hover:bg-surface-hover transition-colors;
+  }
+
+  .data-table tbody td {
+    @apply px-4 py-3 text-ink-primary;
+  }
+
+  .data-table tfoot tr {
+    @apply border-t-2 border-amber-dim;
+  }
+
+  .data-table tfoot td {
+    @apply px-4 py-3 font-semibold text-ink-primary;
+  }
+
+  /* ── Panels — xl radius + inset top-highlight ───────────────────── */
+  .panel {
+    @apply bg-surface-card rounded-xl border border-surface-border shadow-card;
+  }
+
+  .panel-header {
+    @apply px-6 py-4 border-b border-surface-border flex items-center justify-between;
+  }
+
+  /* ── Stat cards ─────────────────────────────────────────────────── */
+  .stat-card {
+    @apply panel p-5 flex flex-col gap-1;
+  }
+
+  /* ── Tags / badges ──────────────────────────────────────────────── */
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  /* ── Monospace text ─────────────────────────────────────────────── */
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Nav active-tab amber glow on label text ─────────────────────── */
+  .nav-tab-active-label {
+    text-shadow: 0 0 14px rgba(245, 158, 11, 0.55);
+  }
+}
