@@ -1,14 +1,48 @@
 import { useState } from 'react';
-import { RefreshCw, Clock, AlertCircle, ShoppingBag, CheckCircle2, ChevronRight, ChevronDown, Package, Download } from 'lucide-react';
+import { RefreshCw, Clock, AlertCircle, ShoppingBag, CheckCircle2, ChevronRight, ChevronDown, Package, Download, Send } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatIDR } from '../utils/formatting';
 import { useToast } from '../lib/toast';
+import { addDays, formatWita, parseOrderTimestamp, todayWita, tradingDate, witaWallClockToEpoch } from '../utils/time';
+import { fetchJurnalStatuses, syncToJurnal, type JurnalLogEntry, type JurnalSyncResult, type JurnalSyncTransaction } from '../services/jurnal';
 
 interface OrderDetail {
   product_name: string;
   sku: string;
   quantity: number;
   base_price: number;
+}
+
+type JurnalRowState = 'not_synced' | 'pending' | 'synced' | 'failed' | 'needs_review' | 'skipped';
+
+interface JurnalRowStatus {
+  state: JurnalRowState;
+  message?: string;
+  invoiceNo?: string | null;
+}
+
+/** iSeller order statuses that count as a completed sale. */
+const COMPLETED_STATUSES = new Set(['completed', 'complete', 'paid']);
+
+function fromLog(entry: JurnalLogEntry | undefined): JurnalRowStatus {
+  if (!entry) return { state: 'not_synced' };
+  switch (entry.status) {
+    case 'paid': return { state: 'synced', invoiceNo: entry.jurnal_invoice_no };
+    case 'failed': return { state: 'failed', message: entry.last_error ?? undefined, invoiceNo: entry.jurnal_invoice_no };
+    case 'needs_review': return { state: 'needs_review', message: entry.last_error ?? undefined, invoiceNo: entry.jurnal_invoice_no };
+    default: return { state: 'pending', invoiceNo: entry.jurnal_invoice_no };
+  }
+}
+
+function fromResult(r: JurnalSyncResult): JurnalRowStatus {
+  switch (r.outcome) {
+    case 'synced':
+    case 'already_synced': return { state: 'synced', invoiceNo: r.jurnal_invoice_no };
+    case 'in_progress': return { state: 'pending', message: r.message };
+    case 'needs_review': return { state: 'needs_review', message: r.message, invoiceNo: r.jurnal_invoice_no };
+    case 'invalid': return { state: 'skipped', message: r.message };
+    default: return { state: 'failed', message: r.message, invoiceNo: r.jurnal_invoice_no };
+  }
 }
 
 interface OrderRow {
@@ -38,37 +72,8 @@ const SHIFT_PRESETS: ShiftPreset[] = [
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function nowUTC8() {
-  return new Date(Date.now() + UTC8_OFFSET_MS);
-}
-
-function todayUTC8() {
-  return nowUTC8().toISOString().slice(0, 10);
-}
-
-function tomorrowUTC8() {
-  const d = nowUTC8();
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
 function toDatetimeLocal(dateStr: string, time: string) {
   return `${dateStr}T${time}`;
-}
-
-function nextDay(dateStr: string) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-const UTC8_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-function toEpoch(s: string): number {
-  const normalized = s.replace(' ', 'T').replace('Z', '').split('.')[0];
-  const full = normalized.length === 10 ? normalized + 'T00:00:00' :
-               normalized.length === 16 ? normalized + ':00' : normalized;
-  return new Date(full).getTime();
 }
 
 function mapDetail(d: any): OrderDetail {
@@ -78,23 +83,6 @@ function mapDetail(d: any): OrderDetail {
     quantity: Number(d.quantity ?? d.Quantity ?? d.qty ?? d.Qty ?? 0),
     base_price: Number(d.base_price ?? d.basePrice ?? d.BasePrice ?? d.price ?? d.Price ?? d.unit_price ?? d.UnitPrice ?? 0),
   };
-}
-
-function formatDate(raw: string): string {
-  if (!raw || raw === '--') return '--';
-  try {
-    const date = new Date(raw);
-    if (isNaN(date.getTime())) return raw;
-    date.setHours(date.getHours() + 8);
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = date.toLocaleString('en-GB', { month: 'short' });
-    const year = date.getFullYear();
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${day} ${month} ${year} at ${hours}:${minutes}`;
-  } catch {
-    return raw;
-  }
 }
 
 function formatDatetimeDisplay(dt: string): string {
@@ -115,8 +103,8 @@ function formatDatetimeDisplay(dt: string): string {
 
 export default function SalesSync() {
   const { showToast } = useToast();
-  const [startDate, setStartDate] = useState(() => todayUTC8());
-  const [endDate, setEndDate]     = useState(() => tomorrowUTC8());
+  const [startDate, setStartDate] = useState(() => todayWita());
+  const [endDate, setEndDate]     = useState(() => addDays(todayWita(), 1));
   const [startTime, setStartTime] = useState('16:00');
   const [endTime, setEndTime]     = useState('06:00');
   const [shiftIdx, setShiftIdx]   = useState(2);
@@ -127,6 +115,79 @@ export default function SalesSync() {
   const [rawCount, setRawCount]   = useState(0);
   const [expanded, setExpanded]   = useState<Set<number>>(new Set());
   const [syncRange, setSyncRange] = useState<{ start: string; end: string } | null>(null);
+
+  const [jurnalStatus, setJurnalStatus] = useState<Map<string, JurnalRowStatus>>(new Map());
+  const [jurnalStatusError, setJurnalStatusError] = useState<string | null>(null);
+  const [jurnalSyncing, setJurnalSyncing] = useState(false);
+  const [jurnalProgress, setJurnalProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function loadJurnalStatuses(rows: OrderRow[]) {
+    setJurnalStatusError(null);
+    try {
+      const log = await fetchJurnalStatuses(rows.map((o) => o.reference).filter((r) => r !== '--'));
+      setJurnalStatus(new Map(rows.map((o) => [o.reference, fromLog(log.get(o.reference))])));
+    } catch (err) {
+      setJurnalStatus(new Map());
+      setJurnalStatusError((err as Error).message);
+    }
+  }
+
+  function setRowStatus(updates: Map<string, JurnalRowStatus>) {
+    setJurnalStatus((prev) => {
+      const next = new Map(prev);
+      updates.forEach((v, k) => next.set(k, v));
+      return next;
+    });
+  }
+
+  async function handleJurnalSync() {
+    if (!orders || orders.length === 0) return;
+
+    // Only completed sales with a reference and a readable date go to Jurnal.
+    const skipped = new Map<string, JurnalRowStatus>();
+    const toSend: JurnalSyncTransaction[] = [];
+    for (const o of orders) {
+      if (o.reference === '--') continue;
+      const current = jurnalStatus.get(o.reference)?.state;
+      if (current === 'synced') continue;
+      if (!COMPLETED_STATUSES.has(o.status.toLowerCase())) {
+        skipped.set(o.reference, { state: 'skipped', message: `Order status is "${o.status}", not completed` });
+        continue;
+      }
+      let salesDate: string;
+      try { salesDate = tradingDate(o.date); } catch {
+        skipped.set(o.reference, { state: 'skipped', message: 'Order date could not be read' });
+        continue;
+      }
+      toSend.push({ order_reference: o.reference, sales_date: salesDate, payment_method: o.payment_method, total_amount: Math.round(o.total) });
+    }
+    setRowStatus(skipped);
+
+    if (toSend.length === 0) {
+      showToast(skipped.size > 0 ? 'No completed orders left to post to Jurnal.' : 'Every order here is already in Jurnal.');
+      return;
+    }
+    const sendTotal = toSend.reduce((s, t) => s + t.total_amount, 0);
+    if (!window.confirm(`Post ${toSend.length} order${toSend.length !== 1 ? 's' : ''} (${formatIDR(sendTotal)}) to Mekari Jurnal?`)) return;
+
+    setJurnalSyncing(true);
+    setJurnalProgress({ done: 0, total: toSend.length });
+    setRowStatus(new Map(toSend.map((t) => [t.order_reference, { state: 'pending' as const }])));
+    try {
+      const results = await syncToJurnal(toSend, { onProgress: (done, total) => setJurnalProgress({ done, total }) });
+      setRowStatus(new Map(results.map((r) => [r.order_reference, fromResult(r)])));
+      const ok = results.filter((r) => r.outcome === 'synced' || r.outcome === 'already_synced').length;
+      const bad = results.length - ok;
+      showToast(bad === 0 ? `Posted ${ok} order${ok !== 1 ? 's' : ''} to Jurnal.` : `Posted ${ok}; ${bad} need attention (see the Jurnal column).`);
+    } catch (err) {
+      showToast(`Jurnal sync error: ${(err as Error).message}`);
+      // Some batches may have gone through before the error: show what the log says.
+      await loadJurnalStatuses(orders);
+    } finally {
+      setJurnalSyncing(false);
+      setJurnalProgress(null);
+    }
+  }
 
 
   function toggleRow(idx: number) {
@@ -144,7 +205,7 @@ export default function SalesSync() {
     setStartTime(preset.startTime);
     setEndTime(preset.endTime);
     if (preset.crossesMidnight) {
-      setEndDate(nextDay(startDate));
+      setEndDate(addDays(startDate, 1));
     } else {
       setEndDate(startDate);
     }
@@ -169,6 +230,7 @@ export default function SalesSync() {
     setError(null);
     setOrders(null);
     setExpanded(new Set());
+    setJurnalStatus(new Map());
 
     const resolvedStart = toDatetimeLocal(startDate, startTime);
     const resolvedEnd = toDatetimeLocal(endDate, endTime);
@@ -221,28 +283,27 @@ export default function SalesSync() {
       });
 
       mapped.sort((a, b) => {
-        const timeA = new Date(a.date).getTime() || 0;
-        const timeB = new Date(b.date).getTime() || 0;
+        const timeA = parseOrderTimestamp(a.date) ?? 0;
+        const timeB = parseOrderTimestamp(b.date) ?? 0;
         if (timeA !== timeB) return timeA - timeB;
         const numA = parseInt(a.reference.replace(/[^0-9]/g, ''), 10) || 0;
         const numB = parseInt(b.reference.replace(/[^0-9]/g, ''), 10) || 0;
         return numA - numB;
       });
 
-      // Filter orders by UTC+8-adjusted timestamps on the frontend
-      const startMs = toEpoch(resolvedStart);
-      const endMs = toEpoch(resolvedEnd);
+      // Keep orders inside the chosen WITA window. The pickers are read as Bali
+      // time whatever the browser's own time zone is.
+      const startMs = witaWallClockToEpoch(resolvedStart);
+      const endMs = witaWallClockToEpoch(resolvedEnd);
       const filtered = mapped.filter((o) => {
-        const raw = o.date;
-        if (!raw || raw === '--') return true;
-        const ms = new Date(raw).getTime();
-        if (isNaN(ms)) return true;
-        const utc8Ms = ms + UTC8_OFFSET_MS;
-        return utc8Ms >= startMs && utc8Ms <= endMs;
+        const ms = parseOrderTimestamp(o.date);
+        if (ms === null) return true;
+        return ms >= startMs && ms <= endMs;
       });
 
       setRawCount(mapped.length);
       setOrders(filtered);
+      void loadJurnalStatuses(filtered);
     } catch (err) {
       const msg = (err as Error).message;
       setError(msg);
@@ -257,19 +318,12 @@ export default function SalesSync() {
   function handleExportExcel() {
     if (!orders || orders.length === 0) return;
     const rows = orders.map((o) => {
-      const txDate = new Date(o.date);
-      const isValid = !isNaN(txDate.getTime());
-      if (isValid) txDate.setHours(txDate.getHours() + 8);
-
-      const dateTransaction = isValid ? formatDate(o.date) : '--';
+      const isValid = parseOrderTimestamp(o.date) !== null;
+      const dateTransaction = isValid ? formatWita(o.date) : '--';
 
       const salesDate = (() => {
         if (!isValid) return '--';
-        const d = new Date(txDate);
-        if (d.getHours() < 6) d.setDate(d.getDate() - 1);
-        const dd = d.getDate().toString().padStart(2, '0');
-        const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-        const yyyy = d.getFullYear();
+        const [yyyy, mm, dd] = tradingDate(o.date).split('-');
         return `SALES ${dd}/${mm}/${yyyy}`;
       })();
 
@@ -387,6 +441,18 @@ export default function SalesSync() {
               Export to Excel
             </button>
           )}
+          {orders && orders.length > 0 && (
+            <button
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-emerald-600/60 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 hover:text-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleJurnalSync}
+              disabled={jurnalSyncing || loading}
+            >
+              <Send size={14} className={jurnalSyncing ? 'animate-pulse' : ''} />
+              {jurnalSyncing
+                ? `Posting${jurnalProgress ? ` ${jurnalProgress.done}/${jurnalProgress.total}` : ''}...`
+                : 'SYNC TO JURNAL'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -421,6 +487,13 @@ export default function SalesSync() {
                 {formatDatetimeDisplay(syncRange.start)} &rarr; {formatDatetimeDisplay(syncRange.end)}
               </div>
             )}
+            {orders.length > 0 && (
+              <div className="text-xs text-ink-tertiary">
+                {jurnalStatusError
+                  ? <span className="text-amber-300/80">Jurnal status unavailable: {jurnalStatusError}</span>
+                  : <>Jurnal: {orders.filter((o) => jurnalStatus.get(o.reference)?.state === 'synced').length} of {orders.length} posted</>}
+              </div>
+            )}
             {grandTotal > 0 && (
               <div className="ml-auto text-right">
                 <p className="text-[10px] text-ink-tertiary uppercase tracking-widest">
@@ -445,6 +518,7 @@ export default function SalesSync() {
                       <th>Date</th>
                       <th>Status</th>
                       <th>Payment Method</th>
+                      <th>Jurnal</th>
                       <th className="text-right">Total Amount</th>
                     </tr>
                   </thead>
@@ -472,7 +546,7 @@ export default function SalesSync() {
                             </td>
                             <td>
                               <span className="text-xs text-ink-secondary">
-                                {formatDate(o.date)}
+                                {formatWita(o.date)}
                               </span>
                             </td>
                             <td>
@@ -483,6 +557,9 @@ export default function SalesSync() {
                                 {o.payment_method}
                               </span>
                             </td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <JurnalBadge status={jurnalStatus.get(o.reference)} />
+                            </td>
                             <td className="text-right">
                               <span className="mono text-xs font-semibold text-ink-primary">
                                 {formatIDR(o.total)}
@@ -491,7 +568,7 @@ export default function SalesSync() {
                           </tr>
                           {isOpen && (
                             <tr key={`detail-${i}`}>
-                              <td colSpan={6} className="!p-0">
+                              <td colSpan={7} className="!p-0">
                                 <DetailPanel details={o.order_details} hasDetails={hasDetails} />
                               </td>
                             </tr>
@@ -559,6 +636,29 @@ function DetailPanel({ details, hasDetails }: { details: OrderDetail[]; hasDetai
         </tbody>
       </table>
     </div>
+  );
+}
+
+const JURNAL_BADGE: Record<JurnalRowState, { label: string; color: string }> = {
+  not_synced:   { label: 'Not synced',   color: 'bg-surface-border text-ink-tertiary' },
+  pending:      { label: 'Pending',      color: 'bg-amber-900/30 text-amber-300' },
+  synced:       { label: 'Synced',       color: 'bg-emerald-900/30 text-emerald-400' },
+  failed:       { label: 'Failed',       color: 'bg-red-900/30 text-red-400' },
+  needs_review: { label: 'Needs review', color: 'bg-orange-900/30 text-orange-300' },
+  skipped:      { label: 'Not sent',     color: 'bg-surface-border text-ink-secondary' },
+};
+
+function JurnalBadge({ status }: { status: JurnalRowStatus | undefined }) {
+  if (!status) return <span className="text-xs text-ink-disabled">--</span>;
+  const { label, color } = JURNAL_BADGE[status.state];
+  const title = [status.invoiceNo && `Invoice ${status.invoiceNo}`, status.message].filter(Boolean).join(' · ');
+  return (
+    <span
+      title={title || undefined}
+      className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${color} ${title ? 'cursor-help' : ''}`}
+    >
+      {label}
+    </span>
   );
 }
 
