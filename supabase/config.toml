@@ -1,0 +1,6 @@
+# Minimal Supabase CLI config so `supabase link` / `supabase db push` work in CI.
+# Everything not set here uses the CLI defaults.
+project_id = "doner-data"
+
+[db]
+major_version = 17

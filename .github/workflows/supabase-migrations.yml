@@ -1,0 +1,59 @@
+# Applies new files in supabase/migrations to the hosted Supabase project
+# whenever they land on main (or on demand from the Actions tab).
+#
+# Secrets, in the "production" environment (Settings → Environments →
+# production) or as repository secrets (Settings → Secrets and variables →
+# Actions):
+#   SUPABASE_ACCESS_TOKEN  supabase.com → Account → Access Tokens
+#   SUPABASE_DB_PASSWORD   the project's database password
+#   SUPABASE_PROJECT_REF   the id in the dashboard URL (supabase.com/dashboard/project/<ref>)
+#
+# Only migrations missing from the project's migration history are applied.
+# SQL pasted into the SQL Editor is not in that history: mark such a file as
+# applied first (supabase migration repair --status applied <version>).
+name: Supabase migrations
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**"]
+  workflow_dispatch:
+
+# Never run two pushes against the database at once.
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    # Environment secrets are only given to jobs that name the environment.
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+
+      - name: Check secrets
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret $name"
+              exit 1
+            fi
+          done
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Show pending migrations
+        run: supabase db push --dry-run
+
+      - name: Apply migrations
+        run: supabase db push
