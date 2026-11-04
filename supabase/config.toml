@@ -8,3 +8,8 @@ major_version = 17
 # Called from the browser with the anon key (SalesSync, services/iseller.ts).
 [functions.iseller-proxy]
 verify_jwt = false
+
+# Called with the signed-in user's access token (services/jurnal.ts). The
+# function also checks the token belongs to a real user, not just the anon key.
+[functions.sync-to-jurnal]
+verify_jwt = true
